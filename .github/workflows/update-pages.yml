@@ -37,10 +37,23 @@ jobs:
             echo "SIZE=~100 MB" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Extract versionCode from release body
+        id: vcode
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VCODE=$(gh release view "$GITHUB_REF_NAME" --json body --jq '.body' | grep -oP 'versionCode:\s*\K\d+' || echo "")
+          if [ -z "$VCODE" ]; then
+            VCODE=$(jq -r '.versionCode // 0' latest-version.json 2>/dev/null || echo "0")
+            VCODE=$((VCODE + 1))
+          fi
+          echo "VCODE=$VCODE" >> "$GITHUB_OUTPUT"
+          echo "versionCode: $VCODE"
+
       - name: Update latest-version.json
         run: |
-          jq -n --arg v "${{ steps.version.outputs.VERSION }}" \
-            '{version: $v, apkUrl: "https://github.com/Jason59000/Deliours-app/releases/latest/download/DeliOurs.apk"}' \
+          jq -n --arg v "${{ steps.version.outputs.VERSION }}" --argjson vc ${{ steps.vcode.outputs.VCODE }} \
+            '{versionCode: $vc, version: $v, apkUrl: "https://github.com/Jason59000/Deliours-app/releases/latest/download/DeliOurs.apk"}' \
             > latest-version.json
           cat latest-version.json
 
