@@ -1,0 +1,83 @@
+name: Release DeliOurs
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Nouvelle version (ex: 1.0.10)"
+        required: true
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Deliours-app
+        uses: actions/checkout@v4
+        with:
+          path: deliours-app
+
+      - name: Checkout DeliOursNatif
+        uses: actions/checkout@v4
+        with:
+          repository: Jason59000/DeliOursNatif
+          token: ${{ secrets.GH_PAT }}
+          path: app
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0 ndk;26.1.10909125"
+
+      - name: Show current version
+        working-directory: app
+        run: node scripts/bump-version.js
+
+      - name: Bump version
+        working-directory: app
+        run: node scripts/bump-version.js ${{ inputs.version }}
+
+      - name: Push version bump to DeliOursNatif
+        working-directory: app
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json app.config.js android/app/build.gradle
+          git commit -m "chore: bump version to v${{ inputs.version }}"
+          git push
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build APK
+        working-directory: app/android
+        run: chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+
+      - name: Prepare APK
+        run: cp app/android/app/build/outputs/apk/release/app-release.apk ./DeliOurs.apk
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh release create "v${{ inputs.version }}" \
+            --repo Jason59000/Deliours-app \
+            --title "DeliOurs v${{ inputs.version }}" \
+            --notes "Release automatique v${{ inputs.version }}" \
+            --latest \
+            DeliOurs.apk
